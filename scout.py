@@ -33,7 +33,7 @@ def scout_all(reddit_client, config):
 
         for sort in sorts:
             posts = reddit_client.get_posts(sub_name, sort=sort, limit=limit)
-            filtered = filter_posts(posts, sub_config, existing_post_ids, reddit_client)
+            filtered = filter_posts(posts, sub_config, existing_post_ids)
             ranked = rank_posts(filtered)
 
             for post in ranked:
@@ -62,7 +62,7 @@ def scout_all(reddit_client, config):
     return new_items
 
 
-def filter_posts(posts, sub_config, existing_post_ids, reddit_client):
+def filter_posts(posts, sub_config, existing_post_ids):
     keywords = [k.lower() for k in sub_config.get("keywords", [])]
     min_score = sub_config.get("min_score", 1)
     max_age_hours = sub_config.get("max_age_hours", 24)

@@ -84,22 +84,16 @@ BODY: <your body text here>"""
     )
 
     text = response.choices[0].message.content.strip()
+
     title = ""
     body = ""
 
-    lines = text.split("\n", 1)
-    for line in text.split("\n"):
-        if line.startswith("TITLE:"):
-            title = line[6:].strip()
-            body = text.split("\n", 1)[-1]
-            if body.startswith("BODY:"):
-                body = body[5:].strip()
-            elif "\nBODY:" in body:
-                body = body.split("BODY:", 1)[1].strip()
-            break
-
-    if not title:
+    if "TITLE:" in text and "BODY:" in text:
+        title = text.split("TITLE:", 1)[1].split("BODY:", 1)[0].strip()
+        body = text.split("BODY:", 1)[1].strip()
+    else:
+        lines = text.split("\n", 1)
         title = lines[0][:200]
-        body = lines[1] if len(lines) > 1 else ""
+        body = lines[1].strip() if len(lines) > 1 else ""
 
     return title, body

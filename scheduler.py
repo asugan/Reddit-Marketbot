@@ -1,7 +1,6 @@
 import json
 import os
 import random
-import time
 from datetime import datetime, timezone
 
 
@@ -31,12 +30,19 @@ class Scheduler:
             json.dump(history, f, indent=2)
 
     def can_act(self):
+        """Returns (can_act, reason, wait_seconds)."""
         now = datetime.now(timezone.utc)
-        local_hour = datetime.now().hour
+        local_now = datetime.now()
+        local_hour = local_now.hour
 
         start_h, end_h = self.active_hours
         if not (start_h <= local_hour < end_h):
-            return False, f"Outside active hours ({start_h}:00-{end_h}:00), current: {local_hour}:00"
+            # Wait until start hour (account for minutes)
+            if local_hour < start_h:
+                wait = (start_h - local_hour) * 3600 - local_now.minute * 60
+            else:
+                wait = (24 - local_hour + start_h) * 3600 - local_now.minute * 60
+            return False, f"Outside active hours ({start_h}:00-{end_h}:00), current: {local_hour}:{local_now.minute:02d}", max(wait, 60)
 
         history = self.load_history()
 
@@ -44,7 +50,9 @@ class Scheduler:
         today_str = now.strftime("%Y-%m-%d")
         today_actions = [h for h in history if h["timestamp"].startswith(today_str)]
         if len(today_actions) >= self.max_actions_per_day:
-            return False, f"Daily limit reached ({self.max_actions_per_day})"
+            # Wait until midnight
+            seconds_left = (24 - local_hour) * 3600
+            return False, f"Daily limit reached ({self.max_actions_per_day})", seconds_left
 
         # Hourly comment limit
         one_hour_ago = now.timestamp() - 3600
@@ -54,12 +62,19 @@ class Scheduler:
             datetime.fromisoformat(h["timestamp"]).timestamp() > one_hour_ago
         ]
         if len(recent_comments) >= self.max_comments_per_hour:
-            return False, f"Hourly comment limit reached ({self.max_comments_per_hour})"
+            # Wait until oldest comment in window expires
+            oldest_ts = min(
+                datetime.fromisoformat(h["timestamp"]).timestamp()
+                for h in recent_comments
+            )
+            wait = int(oldest_ts + 3600 - now.timestamp()) + 5
+            return False, f"Hourly comment limit reached ({self.max_comments_per_hour})", max(wait, 30)
 
         # Daily post limit
         today_posts = [h for h in today_actions if h["type"] == "post"]
         if len(today_posts) >= self.max_posts_per_day:
-            return False, f"Daily post limit reached ({self.max_posts_per_day})"
+            seconds_left = (24 - local_hour) * 3600
+            return False, f"Daily post limit reached ({self.max_posts_per_day})", seconds_left
 
         # Min delay since last action
         if history:
@@ -69,13 +84,13 @@ class Scheduler:
             )
             elapsed = now.timestamp() - last_ts
             if elapsed < self.min_delay:
-                wait = int(self.min_delay - elapsed)
-                return False, f"Too soon since last action (wait {wait}s)"
+                wait = int(self.min_delay - elapsed) + 1
+                return False, f"Too soon since last action (wait {wait}s)", wait
 
-        return True, "OK"
+        return True, "OK", 0
 
     def wait_for_next_slot(self):
-        can, reason = self.can_act()
+        can, reason, _ = self.can_act()
         if can:
             # Random delay with Gaussian distribution
             mean = (self.min_delay + self.max_delay) / 2

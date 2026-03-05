@@ -6,7 +6,6 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.table import Table
-from rich.text import Text
 
 from scout import load_queue, save_queue
 
@@ -41,7 +40,7 @@ def review(status_filter="generated"):
             item["status"] = "rejected"
             console.print("[red]Rejected[/red]")
         elif action == "e":
-            item = edit_item(item)
+            edit_item(item)
             item["status"] = "approved"
             console.print("[green]Edited & Approved[/green]")
         elif action == "q":
@@ -49,6 +48,9 @@ def review(status_filter="generated"):
             save_queue(queue)
             return
         # 's' = skip, do nothing
+
+        if action in ("a", "r", "e"):
+            save_queue(queue)
 
     save_queue(queue)
     console.print("\n[bold green]Review complete![/bold green]")
@@ -112,8 +114,6 @@ def edit_item(item):
             lines = text.split("\n", 1)
             item["title"] = lines[0].strip()
             item["body"] = lines[1].strip() if len(lines) > 1 else ""
-
-    return item
 
 
 def show_status():

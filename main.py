@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import sys
 import time
+from datetime import datetime, timezone
 
 import yaml
 from rich.console import Console
@@ -68,11 +69,10 @@ def cmd_generate(config):
 
             item["status"] = "generated"
             generated += 1
+            save_queue(queue)
             console.print(f"[green]Generated {item['type']} for r/{item['subreddit']}[/green]")
         except Exception as e:
             console.print(f"[red]Error generating for {item['target_post_id']}: {e}[/red]")
-
-    save_queue(queue)
     console.print(f"\n[bold green]Generated {generated} items[/bold green]")
 
 
@@ -83,9 +83,8 @@ def cmd_review():
 def cmd_post(config):
     console.print("[bold]Posting approved items...[/bold]")
     queue = load_queue()
-    approved = [i for i in queue if i["status"] == "approved"]
 
-    if not approved:
+    if not any(i["status"] == "approved" for i in queue):
         console.print("[yellow]No approved items. Run 'review' first.[/yellow]")
         return
 
@@ -98,29 +97,24 @@ def cmd_post(config):
     scheduler = Scheduler(config)
     posted = 0
 
-    for item in approved:
-        can, reason = scheduler.can_act()
-        if not can:
-            console.print(f"[yellow]Rate limited: {reason}[/yellow]")
-            delay = scheduler.wait_for_next_slot()
-            if delay:
-                console.print(f"[dim]Waiting {delay}s...[/dim]")
-                time.sleep(delay)
-                can, reason = scheduler.can_act()
-                if not can:
-                    console.print(f"[yellow]Still limited: {reason}. Stopping.[/yellow]")
-                    break
-            else:
+    for item in queue:
+        if item["status"] != "approved":
+            continue
+        while True:
+            can, reason, wait = scheduler.can_act()
+            if can:
                 break
+            mins = wait // 60
+            secs = wait % 60
+            console.print(f"[yellow]Rate limited: {reason}. Waiting {mins}m{secs}s...[/yellow]")
+            time.sleep(wait)
 
         try:
             if item["type"] == "comment":
                 rid = reddit_client.post_comment(item["target_post_id"], item["content"])
                 item["reddit_id"] = rid
                 item["status"] = "posted"
-                item["posted_at"] = __import__("datetime").datetime.now(
-                    __import__("datetime").timezone.utc
-                ).isoformat()
+                item["posted_at"] = datetime.now(timezone.utc).isoformat()
                 scheduler.record_action("comment", item["id"], item["subreddit"], rid)
                 posted += 1
                 console.print(f"[green]Posted comment on r/{item['subreddit']}[/green]")
@@ -129,9 +123,7 @@ def cmd_post(config):
                 rid = reddit_client.create_post(item["subreddit"], item["title"], item["body"])
                 item["reddit_id"] = rid
                 item["status"] = "posted"
-                item["posted_at"] = __import__("datetime").datetime.now(
-                    __import__("datetime").timezone.utc
-                ).isoformat()
+                item["posted_at"] = datetime.now(timezone.utc).isoformat()
                 scheduler.record_action("post", item["id"], item["subreddit"], rid)
                 posted += 1
                 console.print(f"[green]Created post on r/{item['subreddit']}[/green]")
@@ -140,7 +132,8 @@ def cmd_post(config):
             item["status"] = "failed"
             console.print(f"[red]Failed: {e}[/red]")
 
-    save_queue(queue)
+        save_queue(queue)  # Save after each item
+
     console.print(f"\n[bold green]Posted {posted} items[/bold green]")
 
 

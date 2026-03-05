@@ -83,7 +83,12 @@ class RedditClient:
             "thing_id": f"t3_{post_id}",
             "text": body,
         })
-        # Extract comment id from response
+        self._check_api_errors(result)
+        # Extract comment id from json response
+        comment_data = result.get("json", {}).get("data", {}).get("things", [])
+        if comment_data:
+            return comment_data[0].get("data", {}).get("id")
+        # Fallback: try jquery format
         things = result.get("jquery", [])
         for item in things:
             if isinstance(item, list) and len(item) >= 4:
@@ -96,10 +101,6 @@ class RedditClient:
                                 for thing in cdata["things"]:
                                     if thing.get("kind") == "t1":
                                         return thing["data"]["id"]
-        # Fallback: try to get from json response
-        comment_data = result.get("json", {}).get("data", {}).get("things", [])
-        if comment_data:
-            return comment_data[0].get("data", {}).get("id")
         return None
 
     def create_post(self, subreddit, title, body):
@@ -110,9 +111,14 @@ class RedditClient:
             "text": body,
             "sendreplies": "true",
         })
-        post_url = result.get("json", {}).get("data", {}).get("url", "")
-        post_id = result.get("json", {}).get("data", {}).get("id")
-        return post_id
+        self._check_api_errors(result)
+        return result.get("json", {}).get("data", {}).get("id")
+
+    def _check_api_errors(self, result):
+        errors = result.get("json", {}).get("errors", [])
+        if errors:
+            msg = "; ".join(e[1] if len(e) > 1 else str(e) for e in errors)
+            raise Exception(f"Reddit API error: {msg}")
 
     def get_my_karma(self):
         data = self._get_json(f"/user/{self.username}/about")
