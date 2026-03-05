@@ -22,11 +22,26 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Reddit API Credentials
+### Reddit Authentication
 
-1. Go to https://www.reddit.com/prefs/apps
-2. Create App > select "script" type
-3. Fill in `client_id` and `client_secret` in `config.yaml`
+Two options in `config.yaml`:
+
+**Option 1: Session cookie (recommended for Google SSO users)**
+1. Log into Reddit in your browser
+2. Open DevTools (F12) > Application > Cookies > `reddit.com`
+3. Copy the `reddit_session` cookie value into `config.yaml`
+
+```yaml
+reddit:
+  reddit_session: "eyJhbGciOi..."
+```
+
+**Option 2: Username/password**
+```yaml
+reddit:
+  username: "your_username"
+  password: "your_password"
+```
 
 ### AI Endpoint
 
@@ -52,7 +67,7 @@ Configured via `config.yaml`:
 
 | Section | Description |
 |---|---|
-| `reddit` | API credentials and user agent |
+| `reddit` | Session cookie or username/password, user agent |
 | `ai` | Endpoint URL, model, timeout |
 | `targets.subreddits` | Target subreddits, keyword filters, personas |
 | `rate_limits` | Delays, hourly/daily limits, active hours |
@@ -75,7 +90,7 @@ targets:
 
 ```
 main.py              # CLI entry point
-reddit_client.py     # PRAW wrapper (posts/comments/karma)
+reddit_client.py     # Reddit client via cookie/session auth (posts/comments/karma)
 scout.py             # Post discovery + filtering + ranking
 ai_generator.py      # Content generation via OpenAI-compat endpoint
 review_queue.py      # Rich CLI approval queue
@@ -110,7 +125,9 @@ scout → queue.json (scouted)
 
 ## Tech Stack
 
-- **Python 3** + **praw** (Reddit API)
+- **Python 3** + **requests** (Reddit via old.reddit.com JSON API)
 - **openai** SDK (routed to OpenAI-compatible endpoint)
 - **rich** (CLI UI)
 - **pyyaml** (config)
+
+No Reddit API key required — authenticates via session cookie or username/password.
